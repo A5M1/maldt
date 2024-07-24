@@ -1,0 +1,158 @@
+// Orginally by, Shantanu Hirlekar
+
+#include <iostream>
+#include <string>
+#include <cmath>
+#include <algorithm>
+#include <map>
+#include <fstream>
+#include <vector>
+#include <Windows.h>
+#include <WinBase.h>
+#include <FileAPI.h>
+#include <io.h>
+
+using namespace std;
+typedef unsigned char BYTE;
+
+// Lists the .exe and .dll files present in a directory. 
+vector<string> listFiles(const char *searchpath) {
+    vector<string> names;
+    WIN32_FIND_DATAA search_data;
+    LPWIN32_FIND_DATAA sd = &search_data;
+    memset(sd, 0, sizeof(WIN32_FIND_DATAA));
+    HANDLE handle = FindFirstFileA(searchpath, sd);
+    
+    while (handle != INVALID_HANDLE_VALUE) {
+        names.push_back(search_data.cFileName);
+        if (FindNextFileA(handle, sd) == FALSE)
+            break;
+    }
+
+    FindClose(handle);
+    return names;
+}
+
+// Prints and returns the entropy of a file. 
+double getEntropy(FILE *file) {
+    long fileSize = 0;
+    BYTE *fileBuf;
+    if (file) {
+        int fileNum = _fileno(file);
+        HANDLE hFile = (HANDLE)_get_osfhandle(fileNum);
+        fileSize = GetFileSize(hFile, NULL);
+    }
+
+    fileBuf = new BYTE[fileSize];
+    fread(fileBuf, fileSize, 1, file);
+
+    double entropy = 0;
+    map<char, int> freq;
+    cout << "Getting the entropy of the file, please wait....." << endl;
+    for (int i = 0; i < fileSize; i++) {
+        freq[fileBuf[i]]++;
+    }
+    delete[] fileBuf;
+
+    for (const auto& p : freq) {
+        double frequency = static_cast<double>(p.second) / fileSize;
+        entropy += frequency * log2(frequency);
+    }
+    entropy *= -1;
+    cout << "Entropy is: " << entropy << endl;
+    return entropy;
+}
+
+// A function which returns the files having entropy in the top 10%
+void getTen(float cut_off, const map<string, float>& track) {
+    cout << endl << "Cut off for the top 10% is: " << cut_off << endl;
+    cout << "The files having entropy in the top 10% are: " << endl;
+    for (const auto& val : track) {
+        if (val.second >= cut_off)
+            cout << val.first << ": " << val.second << endl;
+    }
+}
+
+int main(int argc, char const *argv[]) {
+    int i;            
+    FILE *file = nullptr;        
+    const char *filepath;
+    map<string, float> track;
+    float entropy_sum = 0;
+    float max = 0, min = 0;
+    const char *exe = "/*.exe";
+    const char *dll = "/*.dll";
+    char result1[100];
+    char result2[100];
+    
+    // Open the file provided in the command line argument. Else go to the default path. 
+    if (argc != 2) {
+        filepath = "C:/WINDOWS/System32/";
+    } else if (argc == 2) {
+        filepath = argv[1];
+    } else {
+        cout << endl << "Something has gone wrong opening the directory!" << endl;
+        exit(1);
+    }
+    
+    // Call the listFiles function for the .exe and .dll files respectively. 
+    strcpy(result1, filepath);
+    strcat(result1, exe);
+    strcpy(result2, filepath);
+    strcat(result2, dll);
+    vector<string> names = listFiles(result1);
+    int exe_size = names.size();
+    vector<string> names2 = listFiles(result2);
+    int dll_size = names2.size();
+
+    // Combining the vectors of .exe and .dll
+    names.insert(names.end(), names2.begin(), names2.end());
+    int total_size = exe_size + dll_size;
+
+    cout << "Number of .exe files are: " << exe_size << endl;
+    cout << "Number of .dll files are: " << dll_size << endl;
+    cout << "Total files are: " << total_size << endl;
+
+    // Go to the specified path of the directory.
+    if (SetCurrentDirectoryA(filepath))
+        cout << endl << "Going to the filepath." << endl;
+    else {
+        cout << endl << "Can't go to the filepath." << endl;
+        exit(1);
+    }
+
+    // Open each file and calculate its entropy.
+    int cnt = 0;
+    for (const string& s : names) {
+        if ((file = fopen(s.c_str(), "rb")) == nullptr) {
+            cout << endl << "Could not open specified file" << endl;
+            exit(1);
+        } else {
+            cout << endl << "File opened successfully" << endl;
+        }
+
+        double entropy = getEntropy(file);
+
+        entropy_sum += entropy;
+        if (entropy > max) 
+            max = entropy;
+        if (cnt == 0)
+            min = entropy;
+        else if (entropy < min)
+            min = entropy;
+            
+        track[s] = entropy;
+        cnt++;
+        fclose(file);
+    }
+
+    // Printing the average entropy of the files. 
+    float avg = entropy_sum / total_size;
+    cout << endl << "The average entropy of all the files is: " << avg << endl;
+    // Getting the files with entropy in the top 10%
+    float cut_off = (max - min) * 0.9 + min;
+    getTen(cut_off, track);
+    
+    cin >> i;
+    return 0;
+}
